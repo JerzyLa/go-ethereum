@@ -19,13 +19,11 @@ package simulation
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/simulations"
 	"github.com/ethereum/go-ethereum/swarm/network"
 )
 
@@ -97,7 +95,7 @@ func (s *Simulation) kademlias() (ks map[enode.ID]*network.Kademlia) {
 	return ks
 }
 
-func (s *Simulation) WaitNetworkHealth() error {
+/*func (s *Simulation) WaitNetworkHealth() error {
 	// construct the peer pot, so that kademlia health can be checked
 	addrs := make([][]byte, len(s.Net.Nodes))
 	ids := make([]enode.ID, len(s.Net.Nodes))
@@ -145,4 +143,4 @@ func (s *Simulation) WaitNetworkHealth() error {
 		},
 	})
 	return result.Error
-}
+}*/

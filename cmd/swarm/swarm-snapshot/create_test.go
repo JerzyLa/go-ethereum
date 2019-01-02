@@ -20,35 +20,56 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/log"
 )
+
+func init() {
+	log.PrintOrigins(true)
+	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(verbosity), log.StreamHandler(os.Stdout, log.TerminalFormat(true))))
+}
 
 //TestSnapshotCreate is a high level e2e test that tests for snapshot generation
 func TestSnapshotCreate(t *testing.T) {
-	file, err := ioutil.TempFile("", "swarm-snapshot")
-	defer os.Remove(file.Name())
 
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, v := range []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "no topology - discovery enabled",
+			args: []string{
+				"c",
+			},
+		},
+		{
+			name: "yes topology - discovery disabled",
+			args: []string{
+				"--topology",
+				"ring",
+				"c",
+			},
+		},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			file, err := ioutil.TempFile("", "swarm-snapshot")
+			defer os.Remove(file.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	file.Close()
+			file.Close()
+			snap := runSnapshot(t, append(v.args, file.Name())...)
 
-	snap := runSnapshot(t,
-		"--verbosity",
-		"6",
-		"--topology",
-		"ring",
-		"c",
-		file.Name(),
-	)
+			snap.ExpectExit()
+			if snap.ExitStatus() != 0 {
+				t.Fatal("expected exit code 0")
+			}
 
-	_, _ = snap.ExpectRegexp(".")
-	if snap.ExitStatus() != 0 {
-		t.Fatal("expected exit code 0")
-	}
-
-	_, err = os.Stat(file.Name())
-	if err != nil {
-		t.Fatal("could not stat snapshot json")
+			_, err = os.Stat(file.Name())
+			if err != nil {
+				t.Fatal("could not stat snapshot json")
+			}
+		})
 	}
 }

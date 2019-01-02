@@ -22,13 +22,11 @@ import (
 
 func TestSnapshotVerify(t *testing.T) {
 	snap := runSnapshot(t,
-		"--verbosity",
-		"6",
 		"v",
 		"snapshot.json",
 	)
 
-	_, _ = snap.ExpectRegexp(".")
+	snap.ExpectExit()
 	if snap.ExitStatus() != 0 {
 		t.Fatal("expected exit code 0")
 	}

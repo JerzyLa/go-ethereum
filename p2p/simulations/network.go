@@ -82,27 +82,6 @@ func (net *Network) Events() *event.Feed {
 	return &net.events
 }
 
-func (net *Network) AddNodes(nodes int) ([]enode.ID, error) {
-	ids := make([]enode.ID, nodes)
-	trigger := make(chan enode.ID)
-
-	for i := 0; i < nodes; i++ {
-		conf := adapters.RandomNodeConfig()
-		node, err := net.NewNodeWithConfig(conf)
-		if err != nil {
-			return []enode.ID{}, fmt.Errorf("error starting node: %s", err)
-		}
-		if err := net.Start(node.ID()); err != nil {
-			return []enode.ID{}, fmt.Errorf("error starting node %s: %s", node.ID().TerminalString(), err)
-		}
-		if err := triggerChecks(trigger, net, node.ID()); err != nil {
-			return []enode.ID{}, fmt.Errorf("error triggering checks for node %s: %s", node.ID().TerminalString(), err)
-		}
-		ids[i] = node.ID()
-	}
-	return ids, nil
-}
-
 func triggerChecks(trigger chan enode.ID, net *Network, id enode.ID) error {
 	node := net.GetNode(id)
 	if node == nil {

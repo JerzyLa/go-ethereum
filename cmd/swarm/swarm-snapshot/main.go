@@ -17,16 +17,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"sort"
-	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
-	"github.com/ethereum/go-ethereum/swarm/network"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -40,14 +35,13 @@ var (
 	pivot     int
 	nodes     int
 	verbosity int
-	filename  string
 )
 
 var app = utils.NewApp("", "Swarm Snapshot Util")
 var discovery = true
 
 func init() {
-	adapters.RegisterServices(serviceFuncs)
+	//adapters.RegisterServices(serviceFuncs)
 }
 
 func init() {
@@ -123,6 +117,7 @@ func main() {
 	os.Exit(0)
 }
 
+/*
 var serviceFuncs = adapters.Services{
 	"discovery": newService,
 }
@@ -147,4 +142,4 @@ func newService(ctx *adapters.ServiceContext) (node.Service, error) {
 	}
 
 	return network.NewBzz(config, kad, nil, nil, nil), nil
-}
+}*/

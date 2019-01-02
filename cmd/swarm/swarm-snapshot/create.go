@@ -17,16 +17,23 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/simulations"
 	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
+	"github.com/ethereum/go-ethereum/swarm/network"
 	"github.com/ethereum/go-ethereum/swarm/network/simulation"
 	cli "gopkg.in/urfave/cli.v1"
 )
@@ -35,15 +42,17 @@ const testMinProxBinSize = 2
 const NoConnectionTimeout = 1
 
 func create(ctx *cli.Context) error {
+	log.PrintOrigins(true)
+	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(verbosity), log.StreamHandler(os.Stdout, log.TerminalFormat(true))))
+
 	if len(ctx.Args()) < 1 {
 		return errors.New("argument should be the filename to verify or write-to")
 	}
-	filename = ctx.Args()[0]
-	err := ResolvePath()
+	filename, err := touchPath(ctx.Args()[0])
 	if err != nil {
 		return err
 	}
-	err = discoverySnapshot(10, adapters.NewSimAdapter(serviceFuncs))
+	err = discoverySnapshot(filename, 10)
 	if err != nil {
 		utils.Fatalf("Simulation failed: %s", err)
 	}
@@ -51,22 +60,44 @@ func create(ctx *cli.Context) error {
 	return err
 }
 
-func discoverySnapshot(nodes int, adapter adapters.NodeAdapter) error {
+func discoverySnapshot(filename string, nodes int) error {
+	log.Debug("discoverySnapshot", "filename", filename, "nodes", nodes)
 	//disable discovery if topology is specified
 	discovery = topology == ""
-	net := simulations.NewNetwork(adapter, &simulations.NetworkConfig{
-		ID:             "0",
-		DefaultService: "discovery",
-	})
-	defer net.Shutdown()
-	ids, err := net.AddNodes(nodes)
+	ids := make([]enode.ID, 0)
+	sim := simulation.New(map[string]simulation.ServiceFunc{
+		"bzz": func(ctx *adapters.ServiceContext, b *sync.Map) (node.Service, func(), error) {
+			addr := network.NewAddr(ctx.Config.Node())
 
+			kp := network.NewKadParams()
+			kp.MinProxBinSize = testMinProxBinSize
+
+			kad := network.NewKademlia(addr.Over(), kp)
+			hp := network.NewHiveParams()
+			hp.KeepAliveInterval = time.Duration(200) * time.Millisecond
+			hp.Discovery = discovery
+
+			log.Info(fmt.Sprintf("discovery for nodeID %s is %t", ctx.Config.ID.String(), hp.Discovery))
+
+			config := &network.BzzConfig{
+				OverlayAddr:  addr.Over(),
+				UnderlayAddr: addr.Under(),
+				HiveParams:   hp,
+			}
+			ids = append(ids, ctx.Config.ID)
+			return network.NewBzz(config, kad, nil, nil, nil), nil, nil
+
+		},
+	})
+	defer sim.Close()
+
+	_, err := sim.AddNodes(10)
 	if err != nil {
-		return err
+		utils.Fatalf("%v", err)
 	}
 
 	events := make(chan *simulations.Event)
-	sub := net.Events().Subscribe(events)
+	sub := sim.Net.Events().Subscribe(events)
 	select {
 	case ev := <-events:
 		//only catch node up events
@@ -78,38 +109,42 @@ func discoverySnapshot(nodes int, adapter adapters.NodeAdapter) error {
 
 	sub.Unsubscribe()
 
-	if len(net.Conns) > 0 {
+	if len(sim.Net.Conns) > 0 {
 		utils.Fatalf("no connections should exist after just adding nodes")
 	}
 
 	switch topology {
 	case "star":
-		net.SetPivotNode(ids[pivot])
-		if err := net.ConnectNodesStarPivot(nil); err != nil {
+		sim.Net.SetPivotNode(ids[pivot])
+		if err := sim.Net.ConnectNodesStarPivot(nil); err != nil {
 			utils.Fatalf("had an error connecting the nodes in a star: %v", err)
 		}
 	case "ring":
-		if err := net.ConnectNodesRing(nil); err != nil {
+		if err := sim.Net.ConnectNodesRing(nil); err != nil {
 			utils.Fatalf("had an error connecting the nodes in a ring: %v", err)
 		}
 	case "chain":
-		if err := net.ConnectNodesChain(nil); err != nil {
+		if err := sim.Net.ConnectNodesChain(nil); err != nil {
 			utils.Fatalf("had an error connecting the nodes in a chain: %v", err)
 		}
 	case "full":
-		if err := net.ConnectNodesFull(nil); err != nil {
+		if err := sim.Net.ConnectNodesFull(nil); err != nil {
 			utils.Fatalf("had an error connecting full: %v", err)
 		}
 	default:
 		// no topology specified = connect ring and await discovery
-		if err := net.ConnectNodesRing(nil); err != nil {
+		if err := sim.Net.ConnectNodesRing(nil); err != nil {
 			utils.Fatalf("had an error connecting ring: %v", err)
 		}
 	}
-	sim := &simulation.Simulation{Net: net}
-	err = sim.WaitNetworkHealth()
-	if err != nil {
-		return err
+
+	if discovery {
+		ctx, cancelSimRun := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancelSimRun()
+
+		if _, err := sim.WaitTillHealthy(ctx, 2); err != nil {
+			utils.Fatalf("%v", err)
+		}
 	}
 
 	var snap *simulations.Snapshot
@@ -125,9 +160,9 @@ func discoverySnapshot(nodes int, adapter adapters.NodeAdapter) error {
 				panic("stick to the rules, you know what they are")
 			}
 		}
-		snap, err = net.SnapshotWithServices(addServices, removeServices)
+		snap, err = sim.Net.SnapshotWithServices(addServices, removeServices)
 	} else {
-		snap, err = net.Snapshot()
+		snap, err = sim.Net.Snapshot()
 	}
 
 	if err != nil {

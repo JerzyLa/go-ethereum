@@ -6,24 +6,24 @@ import (
 	"path/filepath"
 )
 
-func ResolvePath() error {
+func touchPath(filename string) (string, error) {
 	if path.IsAbs(filename) {
 		if _, err := os.Stat(filename); err == nil {
 			// path exists, we will override the file
-			return nil
+			return filename, nil
 		}
 	}
 
 	d, f := path.Split(filename)
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = os.Stat(path.Join(dir, filename))
 	if err == nil {
 		// path exists, we will override
-		return nil
+		return filename, nil
 	}
 
 	dirPath := path.Join(dir, d)
@@ -31,10 +31,10 @@ func ResolvePath() error {
 	if d != "" {
 		err = os.MkdirAll(dirPath, os.ModeDir)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	filename = filePath
-	return nil
+	return filename, nil
 }
