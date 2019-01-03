@@ -41,10 +41,6 @@ var app = utils.NewApp("", "Swarm Snapshot Util")
 var discovery = true
 
 func init() {
-	//adapters.RegisterServices(serviceFuncs)
-}
-
-func init() {
 	log.PrintOrigins(true)
 	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(verbosity), log.StreamHandler(os.Stdout, log.TerminalFormat(true))))
 
@@ -101,10 +97,6 @@ func init() {
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
-	app.Before = func(ctx *cli.Context) error {
-
-		return nil
-	}
 }
 
 func main() {
@@ -116,30 +108,3 @@ func main() {
 	}
 	os.Exit(0)
 }
-
-/*
-var serviceFuncs = adapters.Services{
-	"discovery": newService,
-}
-
-func newService(ctx *adapters.ServiceContext) (node.Service, error) {
-	addr := network.NewAddr(ctx.Config.Node())
-
-	kp := network.NewKadParams()
-	kp.MinProxBinSize = testMinProxBinSize
-
-	kad := network.NewKademlia(addr.Over(), kp)
-	hp := network.NewHiveParams()
-	hp.KeepAliveInterval = time.Duration(200) * time.Millisecond
-	hp.Discovery = discovery
-
-	log.Info(fmt.Sprintf("discovery for nodeID %s is %t", ctx.Config.ID.String(), hp.Discovery))
-
-	config := &network.BzzConfig{
-		OverlayAddr:  addr.Over(),
-		UnderlayAddr: addr.Under(),
-		HiveParams:   hp,
-	}
-
-	return network.NewBzz(config, kad, nil, nil, nil), nil
-}*/

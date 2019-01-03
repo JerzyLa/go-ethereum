@@ -23,7 +23,7 @@ import (
 func TestSnapshotVerify(t *testing.T) {
 	snap := runSnapshot(t,
 		"v",
-		"snapshot.json",
+		"testdata/snapshot.json",
 	)
 
 	snap.ExpectExit()

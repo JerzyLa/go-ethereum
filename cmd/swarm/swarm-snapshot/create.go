@@ -39,7 +39,7 @@ import (
 )
 
 const testMinProxBinSize = 2
-const NoConnectionTimeout = 1
+const NoConnectionTimeout = 2 * time.Second
 
 func create(ctx *cli.Context) error {
 	log.PrintOrigins(true)
@@ -61,14 +61,22 @@ func create(ctx *cli.Context) error {
 }
 
 func discoverySnapshot(filename string, nodes int) error {
-	log.Debug("discoverySnapshot", "filename", filename, "nodes", nodes)
 	//disable discovery if topology is specified
 	discovery = topology == ""
-	ids := make([]enode.ID, 0)
+	log.Debug("discoverySnapshot", "filename", filename, "nodes", nodes, "discovery", discovery)
+	i := 0
+	var lock sync.Mutex
+	var pivotNodeID enode.ID
 	sim := simulation.New(map[string]simulation.ServiceFunc{
 		"bzz": func(ctx *adapters.ServiceContext, b *sync.Map) (node.Service, func(), error) {
-			addr := network.NewAddr(ctx.Config.Node())
+			lock.Lock()
+			i++
+			if i == pivot {
+				pivotNodeID = ctx.Config.ID
+			}
+			lock.Unlock()
 
+			addr := network.NewAddr(ctx.Config.Node())
 			kp := network.NewKadParams()
 			kp.MinProxBinSize = testMinProxBinSize
 
@@ -77,16 +85,12 @@ func discoverySnapshot(filename string, nodes int) error {
 			hp.KeepAliveInterval = time.Duration(200) * time.Millisecond
 			hp.Discovery = discovery
 
-			log.Info(fmt.Sprintf("discovery for nodeID %s is %t", ctx.Config.ID.String(), hp.Discovery))
-
 			config := &network.BzzConfig{
 				OverlayAddr:  addr.Over(),
 				UnderlayAddr: addr.Under(),
 				HiveParams:   hp,
 			}
-			ids = append(ids, ctx.Config.ID)
 			return network.NewBzz(config, kad, nil, nil, nil), nil, nil
-
 		},
 	})
 	defer sim.Close()
@@ -104,7 +108,7 @@ func discoverySnapshot(filename string, nodes int) error {
 		if ev.Type == simulations.EventTypeConn {
 			utils.Fatalf("this shouldn't happen as connections weren't initiated yet")
 		}
-	case <-time.After(NoConnectionTimeout * time.Second):
+	case <-time.After(NoConnectionTimeout):
 	}
 
 	sub.Unsubscribe()
@@ -115,27 +119,21 @@ func discoverySnapshot(filename string, nodes int) error {
 
 	switch topology {
 	case "star":
-		sim.Net.SetPivotNode(ids[pivot])
-		if err := sim.Net.ConnectNodesStarPivot(nil); err != nil {
-			utils.Fatalf("had an error connecting the nodes in a star: %v", err)
-		}
+		sim.Net.SetPivotNode(pivotNodeID)
+		err = sim.Net.ConnectNodesStarPivot(nil)
 	case "ring":
-		if err := sim.Net.ConnectNodesRing(nil); err != nil {
-			utils.Fatalf("had an error connecting the nodes in a ring: %v", err)
-		}
+		err = sim.Net.ConnectNodesRing(nil)
 	case "chain":
-		if err := sim.Net.ConnectNodesChain(nil); err != nil {
-			utils.Fatalf("had an error connecting the nodes in a chain: %v", err)
-		}
+		err = sim.Net.ConnectNodesChain(nil)
 	case "full":
-		if err := sim.Net.ConnectNodesFull(nil); err != nil {
-			utils.Fatalf("had an error connecting full: %v", err)
-		}
+		err = sim.Net.ConnectNodesFull(nil)
 	default:
 		// no topology specified = connect ring and await discovery
-		if err := sim.Net.ConnectNodesRing(nil); err != nil {
-			utils.Fatalf("had an error connecting ring: %v", err)
-		}
+		topology = "ring"
+		err = sim.Net.ConnectNodesRing(nil)
+	}
+	if err != nil {
+		utils.Fatalf("had an error connecting the nodes in a %v topology: %v", topology, err)
 	}
 
 	if discovery {
@@ -172,7 +170,7 @@ func discoverySnapshot(filename string, nodes int) error {
 	if err != nil {
 		return fmt.Errorf("corrupt json snapshot: %v", err)
 	}
-	err = ioutil.WriteFile(filename, jsonsnapshot, 0755)
+	err = ioutil.WriteFile(filename, jsonsnapshot, 0666)
 	if err != nil {
 		return err
 	}

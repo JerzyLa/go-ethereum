@@ -18,19 +18,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io/ioutil"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/simulations"
 	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
 	"github.com/ethereum/go-ethereum/swarm/network"
 	"github.com/ethereum/go-ethereum/swarm/network/simulation"
@@ -51,36 +44,9 @@ func verify(ctx *cli.Context) error {
 	}
 
 	return err
-
 }
 
 func verifySnapshot(filename string) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			log.Error("Error closing snapshot file", "err", err)
-		}
-	}()
-	jsonbyte, err := ioutil.ReadAll(f)
-	if err != nil {
-		return err
-	}
-	var snap simulations.Snapshot
-	err = json.Unmarshal(jsonbyte, &snap)
-	if err != nil {
-		return err
-	}
-
-	for _, n := range snap.Nodes {
-		n.Node.Config.EnableMsgEvents = true
-	}
-
-	//	discovery := true
-	ids := make([]enode.ID, 0)
 	sim := simulation.New(map[string]simulation.ServiceFunc{
 		"bzz": func(ctx *adapters.ServiceContext, b *sync.Map) (node.Service, func(), error) {
 			addr := network.NewAddr(ctx.Config.Node())
@@ -93,20 +59,17 @@ func verifySnapshot(filename string) error {
 			hp.KeepAliveInterval = time.Duration(200) * time.Millisecond
 			hp.Discovery = true //discovery
 
-			log.Info(fmt.Sprintf("discovery for nodeID %s is %t", ctx.Config.ID.String(), hp.Discovery))
-
 			config := &network.BzzConfig{
 				OverlayAddr:  addr.Over(),
 				UnderlayAddr: addr.Under(),
 				HiveParams:   hp,
 			}
-			ids = append(ids, ctx.Config.ID)
 			return network.NewBzz(config, kad, nil, nil, nil), nil, nil
 
 		},
 	})
 	defer sim.Close()
-	err = sim.UploadSnapshot("snapshot.json")
+	err := sim.UploadSnapshot(filename)
 	if err != nil {
 		utils.Fatalf("%v", err)
 	}
