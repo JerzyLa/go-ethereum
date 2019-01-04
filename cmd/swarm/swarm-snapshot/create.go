@@ -117,21 +117,7 @@ func discoverySnapshot(filename string, nodes int) error {
 		utils.Fatalf("no connections should exist after just adding nodes")
 	}
 
-	switch topology {
-	case "star":
-		sim.Net.SetPivotNode(pivotNodeID)
-		err = sim.Net.ConnectNodesStarPivot(nil)
-	case "ring":
-		err = sim.Net.ConnectNodesRing(nil)
-	case "chain":
-		err = sim.Net.ConnectNodesChain(nil)
-	case "full":
-		err = sim.Net.ConnectNodesFull(nil)
-	default:
-		// no topology specified = connect ring and await discovery
-		topology = "ring"
-		err = sim.Net.ConnectNodesRing(nil)
-	}
+	err := sim.Net.ConnectNodesRing(nil)
 	if err != nil {
 		utils.Fatalf("had an error connecting the nodes in a %v topology: %v", topology, err)
 	}
